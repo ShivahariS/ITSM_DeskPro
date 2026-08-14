@@ -1,0 +1,138 @@
+version: "3.9"
+
+services:
+
+  mysql:
+    image: mysql:8.0
+    container_name: itsm-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./db-init/init-schemas.sql:/docker-entrypoint-initdb.d/init-schemas.sql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  identity-service:
+    build: ./identity-service
+    container_name: identity-service
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+    environment:
+      DB_HOST: mysql
+      DB_NAME: itsm_identity
+      SERVER_PORT: 8081
+      JWT_SECRET: ITSMDeskProSuperSecretKey2024MustBe256BitsLongForHS256Algorithm!!
+      INTERNAL_API_KEY: itsm-internal-service-key-change-me
+    ports:
+      - "8081:8081"
+
+  incident-problem-service:
+    build: ./incident-problem-service
+    container_name: incident-problem-service
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      identity-service: { condition: service_started }
+    environment:
+      DB_HOST: mysql
+      DB_NAME: itsm_incident
+      SERVER_PORT: 8082
+      JWT_SECRET: ITSMDeskProSuperSecretKey2024MustBe256BitsLongForHS256Algorithm!!
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      NOTIFICATION_SERVICE_URL: http://notification-reporting-service:8085
+      INTERNAL_API_KEY: itsm-internal-service-key-change-me
+    ports:
+      - "8082:8082"
+
+  change-management-service:
+    build: ./change-management-service
+    container_name: change-management-service
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      identity-service: { condition: service_started }
+    environment:
+      DB_HOST: mysql
+      DB_NAME: itsm_change
+      SERVER_PORT: 8083
+      JWT_SECRET: ITSMDeskProSuperSecretKey2024MustBe256BitsLongForHS256Algorithm!!
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      NOTIFICATION_SERVICE_URL: http://notification-reporting-service:8085
+      INTERNAL_API_KEY: itsm-internal-service-key-change-me
+    ports:
+      - "8083:8083"
+
+  asset-catalog-service:
+    build: ./asset-catalog-service
+    container_name: asset-catalog-service
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+      identity-service: { condition: service_started }
+    environment:
+      DB_HOST: mysql
+      DB_NAME: itsm_asset
+      SERVER_PORT: 8084
+      JWT_SECRET: ITSMDeskProSuperSecretKey2024MustBe256BitsLongForHS256Algorithm!!
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      NOTIFICATION_SERVICE_URL: http://notification-reporting-service:8085
+      INTERNAL_API_KEY: itsm-internal-service-key-change-me
+    ports:
+      - "8084:8084"
+
+  notification-reporting-service:
+    build: ./notification-reporting-service
+    container_name: notification-reporting-service
+    restart: unless-stopped
+    depends_on:
+      mysql: { condition: service_healthy }
+    environment:
+      DB_HOST: mysql
+      DB_NAME: itsm_notification
+      SERVER_PORT: 8085
+      JWT_SECRET: ITSMDeskProSuperSecretKey2024MustBe256BitsLongForHS256Algorithm!!
+      INTERNAL_API_KEY: itsm-internal-service-key-change-me
+    ports:
+      - "8085:8085"
+
+  api-gateway:
+    build: ./api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    depends_on:
+      - identity-service
+      - incident-problem-service
+      - change-management-service
+      - asset-catalog-service
+      - notification-reporting-service
+    environment:
+      SERVER_PORT: 8080
+      IDENTITY_SERVICE_URL: http://identity-service:8081
+      INCIDENT_SERVICE_URL: http://incident-problem-service:8082
+      CHANGE_SERVICE_URL: http://change-management-service:8083
+      ASSET_SERVICE_URL: http://asset-catalog-service:8084
+      NOTIFICATION_SERVICE_URL: http://notification-reporting-service:8085
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    container_name: itsm-frontend
+    restart: unless-stopped
+    depends_on:
+      - api-gateway
+    environment:
+      VITE_API_PROXY_TARGET: http://api-gateway:8080
+    ports:
+      - "5173:5173"
+
+volumes:
+  mysql-data:
