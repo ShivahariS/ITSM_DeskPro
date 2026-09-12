@@ -3,9 +3,9 @@ import axios from 'axios';
 export const TOKEN_KEY = 'itsm_token';
 export const USER_KEY = 'itsm_user';
 
-// All requests go through the Vite proxy (/api -> http://localhost:8082).
+// All requests go through the Vite proxy (/api -> http://localhost:8080).
 const api = axios.create({
-  baseURL: '/api/v1',
+  baseURL: import.meta.env.VITE_API_URL ||'/api/v1',
   headers: { 'Content-Type': 'application/json' },
 });
 
